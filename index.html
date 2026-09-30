@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Roomkey</title>
+<meta name="description" content="One QR code for your workshop. Paste links, keys and commands once and they appear on every laptop in the room.">
+<meta property="og:title" content="Roomkey">
+<meta property="og:description" content="One QR code for your workshop. Paste links, keys and commands once and they appear on every laptop in the room.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2337352F'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="rail">
+  <div class="rail-in">
+    <a class="brand" href="#"><span class="brand-mark" aria-hidden="true">&#9679;</span>Roomkey</a>
+    <div class="sess" id="sessBox" hidden>
+      <h1 id="roomTitle">Workshop room</h1>
+      <div class="meta">
+        <span id="liveFlag" class="live off"><i></i><span>Connecting</span></span>
+        <span id="codeTag"></span>
+        <span id="lockTag"></span>
+      </div>
+    </div>
+    <div id="viewSwitch"></div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="grid" id="grid">
+    <main class="col" id="main">
+      <div class="empty-notes">Loading…</div>
+    </main>
+    <aside class="console" id="console" hidden></aside>
+  </div>
+</div>
+<div class="helpbar" id="helpbar" hidden></div>
+<div id="projector" class="proj" hidden></div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="firebase-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

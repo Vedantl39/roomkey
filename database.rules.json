@@ -1,0 +1,26 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "rooms": {
+      "$code": {
+        ".read": "$code.matches(/^[A-Z2-9]{6}$/)",
+        "meta": {
+          ".write": "auth != null && (!data.exists() || data.child('owner').val() === auth.uid)",
+          ".validate": "newData.hasChildren(['owner', 'title', 'salt', 'check', 'createdAt']) && newData.child('owner').val() === auth.uid && newData.child('title').isString() && newData.child('title').val().length <= 80"
+        },
+        "pad": {
+          ".write": "auth != null && root.child('rooms').child($code).child('meta/owner').val() === auth.uid",
+          ".validate": "newData.hasChildren(['iv', 'ct', 'at']) && newData.child('ct').isString() && newData.child('ct').val().length <= 400000"
+        },
+        "people": {
+          "$uid": {
+            ".write": "auth != null && (auth.uid === $uid || root.child('rooms').child($code).child('meta/owner').val() === auth.uid)",
+            ".validate": "newData.hasChildren(['stuck']) && newData.child('stuck').isBoolean()"
+          }
+        },
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}
