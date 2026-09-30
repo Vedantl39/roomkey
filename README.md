@@ -1,6 +1,7 @@
 # Roomkey
 
 **Live:** https://roomkey-dublin.netlify.app
+<img width="1918" height="958" alt="Screenshot 2026-09-30 at 5 58 45 PM" src="https://github.com/user-attachments/assets/97bb7d55-aa87-4832-b2f1-8489192fe517" />
 
 One QR for the whole room. A presenter pastes links, API keys and commands into a notepad, and they show up live on every attendee's laptop (Windows, Mac or phone), behind a 6-digit room PIN.
 
