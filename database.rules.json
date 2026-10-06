@@ -21,6 +21,19 @@
         },
         "$other": { ".validate": false }
       }
+    },
+    "events": {
+      ".indexOn": ["at"],
+      "$id": {
+        ".write": "auth != null && !data.exists() && newData.exists()",
+        ".validate": "newData.hasChildren(['t', 'r', 'u', 'd', 'at'])",
+        "t": { ".validate": "newData.isString() && newData.val().matches(/^(room_created|joined|pin_failed|stuck_on|stuck_off|copy_line|copy_section|copy_all|link_copied|projector_opened|room_closed|room_reopened)$/)" },
+        "r": { ".validate": "newData.isString() && newData.val().matches(/^[A-Z2-9]{6}$/)" },
+        "u": { ".validate": "newData.val() === auth.uid" },
+        "d": { ".validate": "newData.isString() && newData.val().matches(/^[md]$/)" },
+        "at": { ".validate": "newData.val() === now" },
+        "$other": { ".validate": false }
+      }
     }
   }
 }

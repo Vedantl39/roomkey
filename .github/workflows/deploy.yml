@@ -1,0 +1,66 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "reports/**"
+      - "**.md"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Ship to Netlify and Firebase
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      FIREBASE_WEB_CONFIG: ${{ secrets.FIREBASE_WEB_CONFIG }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Deploy database rules
+        if: env.FIREBASE_SERVICE_ACCOUNT != ''
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json" npx firebase deploy --only database --non-interactive
+          rm "$RUNNER_TEMP/sa.json"
+
+      - name: Build site folder with the real Firebase config
+        if: env.FIREBASE_WEB_CONFIG != ''
+        run: |
+          mkdir _site
+          cp index.html app.js styles.css _site/
+          node -e '
+            const cfg = JSON.parse(process.env.FIREBASE_WEB_CONFIG);
+            for (const k of ["apiKey", "databaseURL", "projectId"]) if (!cfg[k]) throw new Error("FIREBASE_WEB_CONFIG is missing " + k);
+            require("fs").writeFileSync("_site/firebase-config.js", "window.ROOMKEY_FIREBASE = " + JSON.stringify(cfg, null, 2) + ";\n");
+          '
+
+      - name: Deploy site to Netlify
+        if: env.FIREBASE_WEB_CONFIG != '' && env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message || 'manual deploy' }}
+        run: npx --yes netlify-cli@17 deploy --prod --dir _site --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN" --message "${GITHUB_SHA::7} ${COMMIT_MSG%%$'\n'*}"
+
+      - name: Tell me what's missing
+        if: env.FIREBASE_WEB_CONFIG == '' || env.NETLIFY_AUTH_TOKEN == '' || env.NETLIFY_SITE_ID == '' || env.FIREBASE_SERVICE_ACCOUNT == ''
+        run: echo "::warning::Some deploy secrets aren't set, so parts of the deploy were skipped. See README > Deploys and reports."

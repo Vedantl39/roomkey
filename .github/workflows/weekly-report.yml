@@ -1,0 +1,52 @@
+name: Weekly report
+
+on:
+  schedule:
+    - cron: "43 6 * * 1"   # Mondays, 07:43 Dublin time in summer, 06:43 in winter
+  workflow_dispatch:
+
+concurrency:
+  group: weekly-report
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # to commit the report
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    env:
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: agent/package-lock.json
+
+      - name: Check secrets
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ] || [ -z "$FIREBASE_DATABASE_URL" ]; then
+            echo "::error::Add FIREBASE_SERVICE_ACCOUNT and FIREBASE_DATABASE_URL in Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - name: Build report
+        working-directory: agent
+        run: |
+          npm ci
+          node src/run.js --source firebase --out ../reports
+
+      - name: Commit report
+        run: |
+          git config user.name "roomkey-insights[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reports
+          if git diff --cached --quiet; then echo "No changes"; exit 0; fi
+          git commit -m "Weekly report $(date -u +%Y-%m-%d)"
+          git push
+
+      - name: Summary
+        run: cat reports/README.md >> "$GITHUB_STEP_SUMMARY"
