@@ -91,6 +91,15 @@ function resetRoom(code){
     sync:"ok", stuck:false, people:{}, wrong:0, lockUntil:0, preview:false, offs:[], meRef:null});
 }
 const isOwner=()=>!!(R.meta&&uid&&R.meta.owner===uid);
+
+/* ================= analytics: counts events only, never notes, PINs or keys ================= */
+const EVENT_TYPES=["room_created","joined","pin_failed","stuck_on","stuck_off","copy_line","copy_section","copy_all","link_copied","projector_opened","room_closed","room_reopened"];
+const device=(()=>{ try{ return matchMedia("(pointer:coarse)").matches?"m":"d"; }catch(e){ return "d"; } })();
+function track(type, code){
+  if(!db||!uid||!EVENT_TYPES.includes(type)) return;
+  code=code||R.code; if(!CODE_RE.test(code||"")) return;
+  db.ref("events").push({t:type, r:code, u:uid, d:device, at:firebase.database.ServerValue.TIMESTAMP}).catch(()=>{});
+}
 const presenterView=()=>isOwner()&&!R.preview;
 
 /* ================= routing ================= */
@@ -199,6 +208,7 @@ async function createRoom(pin, title){
     }catch(e){ if(String(e&&e.code||e).toLowerCase().includes("permission")) continue; throw e; }
     await db.ref("rooms/"+code+"/pad").set({iv:pad.iv, ct:pad.ct, at:firebase.database.ServerValue.TIMESTAMP});
     lsSet("rk-pin-"+code, pin);
+    track("room_created", code);
     return code;
   }
   throw new Error("no free code");
@@ -254,10 +264,12 @@ function joinPeople(){
   R.meRef=db.ref("rooms/"+R.code+"/people/"+uid);
   R.meRef.onDisconnect().remove();
   R.meRef.set({stuck:false, at:firebase.database.ServerValue.TIMESTAMP}).catch(()=>{});
+  track("joined");
 }
 function setStuck(v){
   R.stuck=v; renderHelp();
   if(R.meRef) R.meRef.set({stuck:v, at:firebase.database.ServerValue.TIMESTAMP}).catch(()=>toast("Couldn't reach the room"));
+  track(v?"stuck_on":"stuck_off");
   if(v) toast("The presenter can see you need a hand");
 }
 
@@ -325,6 +337,7 @@ function renderGate(){
     btn.disabled=true; btn.textContent="Checking…";
     if(await unlock(p)){ renderRoom(); return; }
     btn.disabled=false; btn.textContent="Join room";
+    track("pin_failed");
     R.wrong++; if(R.wrong>=5){ R.lockUntil=Date.now()+30000; R.wrong=0; }
     err.textContent="That PIN doesn't match this room."; pin.select();
   }},[pin,btn]);
@@ -364,18 +377,18 @@ function renderNotes(){
   const secs=sections(R.text);
   box.append(h("div",{class:"notes-head"},[
     h("span",{class:"when",id:"whenText",text:R.updatedAt?"Updated "+ago(R.updatedAt):"Live notes from the presenter"}),
-    secs.length?h("button",{class:"btn",type:"button",text:"Copy everything",onclick:e=>copy(R.text,e.currentTarget)}):null
+    secs.length?h("button",{class:"btn",type:"button",text:"Copy everything",onclick:e=>{ copy(R.text,e.currentTarget); track("copy_all"); }}):null
   ]));
   if(!secs.length){ box.append(h("div",{class:"empty-notes",text:"Nothing here yet. Whatever the presenter pastes will appear here by itself, no refresh needed."})); return box; }
   secs.forEach((s,i)=>{
     const sec=h("section",{class:"sec"+(R.freshIdx.has(i)?" fresh":"")});
     const body=s.lines.join("\n");
-    sec.append(h("div",{class:"sec-head"},[h("h3",{text:s.title||("Section "+(i+1))}), h("button",{class:"btn",type:"button",text:"Copy section",onclick:e=>copy(body,e.currentTarget)})]));
+    sec.append(h("div",{class:"sec-head"},[h("h3",{text:s.title||("Section "+(i+1))}), h("button",{class:"btn",type:"button",text:"Copy section",onclick:e=>{ copy(body,e.currentTarget); track("copy_section"); }})]));
     s.lines.forEach(l=>{
       if(!l.trim()){ sec.append(h("div",{class:"line blank"})); return; }
       const kv=/^[A-Za-z_][A-Za-z0-9_]*\s*=/.test(l)||/^\s*(\$|npm |npx |pip |git |python |curl |export |cd |docker )/.test(l);
       const txt=h("div",{class:"txt"}); linkify(txt,l);
-      sec.append(h("div",{class:"line"+(kv?" kv":"")},[txt, h("button",{class:"cp",type:"button",text:"Copy","aria-label":"Copy this line",onclick:e=>copy(l.replace(/^\s*\$\s*/,""),e.currentTarget)})]));
+      sec.append(h("div",{class:"line"+(kv?" kv":"")},[txt, h("button",{class:"cp",type:"button",text:"Copy","aria-label":"Copy this line",onclick:e=>{ copy(l.replace(/^\s*\$\s*/,""),e.currentTarget); track("copy_line"); }})]));
     });
     box.append(sec);
   });
@@ -403,7 +416,7 @@ function renderConsole(){
     ]),
     h("div",{class:"row"},[
       h("button",{class:"btn primary",type:"button",text:"Show on projector",onclick:openProjector}),
-      h("button",{class:"btn",type:"button",text:"Copy link",onclick:e=>copy(link,e.currentTarget)})
+      h("button",{class:"btn",type:"button",text:"Copy link",onclick:e=>{ copy(link,e.currentTarget); track("link_copied"); }})
     ])
   ]));
   if(qrFor!==link||!keepQr){ drawQr(qr,link,200); qrFor=link; }
@@ -430,7 +443,7 @@ function renderConsole(){
       h("div",{class:"row"},[
         h("button",{class:"btn",type:"button",text:"Save name",onclick:()=>{ const t=titleIn.value.trim(); if(t) saveMeta({title:t.slice(0,80)}).then(()=>toast("Saved")); }}),
         R.meta.ended
-          ? h("button",{class:"btn",type:"button",text:"Reopen room",onclick:()=>saveMeta({ended:false})})
+          ? h("button",{class:"btn",type:"button",text:"Reopen room",onclick:()=>{ saveMeta({ended:false}); track("room_reopened"); }})
           : h("button",{class:"btn danger",type:"button",text:"Close room and wipe notes",onclick:e=>{ const b=e.currentTarget; if(b.dataset.sure!=="1"){b.dataset.sure="1";b.textContent="Click again to close";return;} closeRoom(); }})
       ]),
       h("p",{class:"note",text:"The PIN keeps out anyone who only has the link. For real safety, paste workshop-only keys you revoke after the event."}),
@@ -447,6 +460,7 @@ async function closeRoom(){
   const box=await seal(R.key,"");
   await db.ref("rooms/"+R.code+"/pad").set({iv:box.iv, ct:box.ct, at:firebase.database.ServerValue.TIMESTAMP}).catch(()=>{});
   await saveMeta({ended:true});
+  track("room_closed");
 }
 function drawQr(el, link, size){
   el.replaceChildren();
@@ -470,6 +484,7 @@ function openProjector(){
   );
   drawQr(qr, roomLink(R.code), 600);
   p.hidden=false;
+  track("projector_opened");
 }
 function closeProjector(){ const p=$("projector"); if(p) p.hidden=true; }
 document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeProjector(); });

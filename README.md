@@ -1,5 +1,7 @@
 # Roomkey
 
+[![CI](https://github.com/Vedantl39/roomkey/actions/workflows/ci.yml/badge.svg)](https://github.com/Vedantl39/roomkey/actions/workflows/ci.yml) [![Deploy](https://github.com/Vedantl39/roomkey/actions/workflows/deploy.yml/badge.svg)](https://github.com/Vedantl39/roomkey/actions/workflows/deploy.yml) [![Weekly report](https://github.com/Vedantl39/roomkey/actions/workflows/weekly-report.yml/badge.svg)](reports/README.md)
+
 **Live:** https://roomkey-dublin.netlify.app
 <img width="1918" height="958" alt="Screenshot 2026-09-30 at 5 58 45 PM" src="https://github.com/user-attachments/assets/97bb7d55-aa87-4832-b2f1-8489192fe517" />
 
@@ -19,7 +21,11 @@ It's a plain static site (HTML, CSS, JS) with Firebase Realtime Database for the
 | `app.js` | All the app logic |
 | `styles.css` | The look |
 | `firebase-config.js` | **You edit this one** with your Firebase keys |
-| `database.rules.json` | Security rules you paste into Firebase |
+| `database.rules.json` | Security rules (deployed automatically, see below) |
+| `agent/` | The insights agent that writes the weekly usage report |
+| `reports/` | The latest weekly report, plus an archive in `reports/weekly/` |
+| `tests/` | Database rules tests (Firebase emulator) and an end-to-end browser test |
+| `.github/workflows/` | CI, deploy and weekly report pipelines |
 
 ## Setup (about 10 minutes)
 
@@ -84,3 +90,77 @@ type notes ──► encrypt with PIN ──► rooms/CODE/pad (scrambled) ─�
 ```
 
 The database rules make sure only the room's creator can change its notes, each attendee can only write their own "stuck" flag, and nobody can list all rooms.
+
+## Usage analytics
+
+Roomkey counts how it's being used so you can see whether it's working in real rooms. **It only ever records events, never content.** Each event is five fields:
+
+| Field | Example | Meaning |
+|---|---|---|
+| `t` | `joined` | What happened |
+| `r` | `K7PQ2M` | Which room |
+| `u` | anonymous ID | Which browser (Firebase anonymous sign-in, no name or email) |
+| `d` | `d` or `m` | Laptop/desktop or phone |
+| `at` | server time | When |
+
+Events tracked: `room_created`, `joined`, `pin_failed`, `stuck_on`, `stuck_off`, `copy_line`, `copy_section`, `copy_all`, `link_copied`, `projector_opened`, `room_closed`, `room_reopened`.
+
+The database rules make `/events` **write-only** from browsers: nobody can read, edit or delete events from the site, events can't carry any extra fields (so notes, PINs or keys can't sneak in), and timestamps have to come from the server. Only the insights agent, using a service account, can read them.
+
+### The weekly report
+
+Every Monday morning the **Weekly report** workflow runs the agent in `agent/`. It reads the events, compares the last 7 days with the 7 before, and commits a report to [`reports/README.md`](reports/README.md) with a chart, the key numbers, what stands out and up to three next steps. Things it watches for:
+
+- **Real sessions** (rooms with 3+ laptops) vs rooms that were only tests
+- **Time to fill a room**: first laptop in to 80% of laptops in. This is the core promise.
+- **Wrong PIN rate** and **share joining on phones** (keys are needed on laptops)
+- **Copies per attendee**, i.e. whether people actually use what's pasted
+- **"I'm stuck" rate**, rooms left open, and rooms getting close to Firebase's 100-connection free limit
+- **Returning presenters**
+
+The repo is public, so the report is deliberately aggregate: no room codes, room names or user IDs. A test checks this.
+
+The insights are rule-based for now. `agent/src/insights.js` takes a metrics object and returns `{ headline, insights, actions }`, so it can be swapped for an LLM later without touching anything else.
+
+Try it on fake data:
+
+```bash
+cd agent && npm ci && npm run demo   # writes ../reports-demo/
+```
+
+## Deploys and reports (GitHub Actions)
+
+| Workflow | When | What it does |
+|---|---|---|
+| **CI** | Every push to a branch and every pull request | Syntax checks, database rules tests on the Firebase emulator, an end-to-end browser test of the analytics, and the agent's tests |
+| **Deploy** | Every push to `main` | Runs CI first. If it passes, deploys the database rules to Firebase and the site to Netlify with the real Firebase config |
+| **Weekly report** | Mondays ~07:45 Dublin time, or on demand | Runs the agent and commits the report |
+
+### One-time setup
+
+Add these in **GitHub > Settings > Secrets and variables > Actions > New repository secret**:
+
+| Secret | Where to get it |
+|---|---|
+| `FIREBASE_WEB_CONFIG` | Your web config as JSON, e.g. `{"apiKey":"AIza...","authDomain":"...","databaseURL":"https://...firebasedatabase.app","projectId":"roomkey-cb4d3","appId":"..."}`. Same values as `firebase-config.js`, with quotes around the keys. |
+| `FIREBASE_DATABASE_URL` | The `databaseURL` from above |
+| `FIREBASE_SERVICE_ACCOUNT` | Firebase console > Project settings > Service accounts > **Generate new private key**. Paste the whole JSON file. |
+| `NETLIFY_AUTH_TOKEN` | Netlify > User settings > Applications > Personal access tokens > **New access token** |
+| `NETLIFY_SITE_ID` | Netlify > your site > Site configuration > Site details > **Site ID** |
+
+Then:
+
+1. If your Netlify site is linked to this repo, turn off its own builds (Site configuration > Build & deploy > **Stop builds**). GitHub Actions does the deploy now, and Netlify building straight from the repo would ship the placeholder `firebase-config.js`.
+2. Push to `main`, or go to **Actions > Deploy > Run workflow**.
+3. Check `.firebaserc` has your Firebase project ID (`roomkey-cb4d3`).
+4. If the rules deploy step fails with a permissions error, open Google Cloud console > IAM, find the `firebase-adminsdk` service account and add the **Firebase Realtime Database Admin** role.
+
+### Running the tests locally
+
+```bash
+npm ci
+npm run check        # syntax and JSON checks
+npm run test:e2e     # browser test (needs: npx playwright install chromium)
+npm run test:rules   # rules test (needs Java 21 for the Firebase emulator)
+cd agent && npm ci && npm test
+```

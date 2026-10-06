@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+  workflow_call:   # deploy.yml runs this first and only ships if it passes
+
+permissions:
+  contents: read
+
+jobs:
+  site:
+    name: Site, rules and browser test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4   # the Firebase emulator runs on Java
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - name: Syntax and config checks
+        run: npm run check
+      - name: Database rules (Firebase emulator)
+        run: npm run test:rules
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end analytics test
+        run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: test-results/
+          retention-days: 7
+
+  agent:
+    name: Insights agent
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: agent/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - name: Dry run on demo data
+        run: node src/run.js --source demo --now 2026-10-12T06:45:00Z --out ../reports-demo

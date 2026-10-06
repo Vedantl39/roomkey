@@ -1,0 +1,17 @@
+{
+  "name": "roomkey",
+  "private": true,
+  "description": "Roomkey site tooling: emulator tests for database rules and an end-to-end browser test. The site itself has no build step.",
+  "scripts": {
+    "check": "node --check app.js && node --check firebase-config.js && node -e \"JSON.parse(require('fs').readFileSync('database.rules.json','utf8'))\"",
+    "test:rules": "firebase emulators:exec --only auth,database --project demo-roomkey \"node --test tests/rules.test.mjs\"",
+    "test:e2e": "playwright test",
+    "test": "npm run check && npm run test:rules && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^3.0.4",
+    "@playwright/test": "^1.56.0",
+    "firebase": "^10.14.1",
+    "firebase-tools": "^13.24.0"
+  }
+}
